@@ -25,3 +25,6 @@ $(TARGET): $(OBJS)
 
 clean:
 	rm -f $(OBJS) $(TARGET)
+
+release: clean
+	$(CC) $(CFLAGS) -static -o khm-linux-amd64 $(SRCS) -lpthread
