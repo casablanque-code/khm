@@ -1,0 +1,60 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install static libc
+        run: sudo apt-get install -y musl-tools
+
+      - name: Build static binary (musl)
+        run: |
+          CC=musl-gcc make clean
+          musl-gcc -std=c11 -Wall -Wextra -O2 -D_POSIX_C_SOURCE=200809L \
+            -static -o khm-linux-amd64 \
+            main.c parser.c sha256.c hostkey.c \
+            commands/list.c commands/verify.c \
+            commands/diff.c commands/scan.c \
+            -lpthread
+          strip khm-linux-amd64
+          sha256sum khm-linux-amd64 > khm-linux-amd64.sha256
+
+      - name: Smoke test static binary
+        run: |
+          ./khm-linux-amd64 --help || true
+          mkdir -p ~/.ssh && touch ~/.ssh/known_hosts
+          ./khm-linux-amd64 list
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "khm ${{ github.ref_name }}"
+          body: |
+            ## Install
+
+            ```bash
+            curl -Lo /usr/local/bin/khm \
+              https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/khm-linux-amd64
+            chmod +x /usr/local/bin/khm
+            ```
+
+            ## Verify checksum
+
+            ```bash
+            sha256sum -c khm-linux-amd64.sha256
+            ```
+          files: |
+            khm-linux-amd64
+            khm-linux-amd64.sha256
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}

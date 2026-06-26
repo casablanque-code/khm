@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+    tags-ignore: ["v*"]   # release workflow handles tags
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        run: make
+
+      - name: Smoke test — help
+        run: ./khm --help || true
+
+      - name: Smoke test — list (no known_hosts is ok)
+        run: |
+          mkdir -p ~/.ssh && touch ~/.ssh/known_hosts
+          ./khm list
+
+      - name: Smoke test — diff identical files
+        run: |
+          echo "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl" > /tmp/kh_a
+          cp /tmp/kh_a /tmp/kh_b
+          ./khm diff /tmp/kh_a /tmp/kh_b
+
+      - name: Smoke test — diff detects changes
+        run: |
+          echo "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl" > /tmp/kh_a
+          echo "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICHANGED" > /tmp/kh_b
+          ./khm diff /tmp/kh_a /tmp/kh_b && exit 1 || exit 0
