@@ -1,9 +1,10 @@
 # khm — known hosts manager
 
 [![CI](https://github.com/casablanque-code/khm/actions/workflows/ci.yml/badge.svg)](https://github.com/casablanque-code/khm/actions/workflows/ci.yml)
-![Pure C](https://img.shields.io/badge/pure-C-blue)
-![Zero Dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen)
-![Platform](https://img.shields.io/badge/platform-Linux-lightgrey)
+[![Release](https://img.shields.io/github/v/release/casablanque-code/khm)](https://github.com/casablanque-code/khm/releases/latest)
+[![Pure C](https://img.shields.io/badge/pure-C11-blue)](#implementation)
+[![Zero Dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen)](#how-it-works)
+[![Platform](https://img.shields.io/badge/platform-Linux-lightgrey)](#install)
 
 A CLI tool for managing SSH `known_hosts` files. No libssh, no OpenSSL, no nothing — raw BSD sockets, a hand-rolled SHA-256, and a partial SSH handshake to fetch host keys directly.
 
