@@ -2,6 +2,6 @@
 #define KHM_CMD_LIST_H
 
 /* path = NULL → use ~/.ssh/known_hosts */
-int cmd_list(const char *path, int no_color);
+int cmd_list(const char *path, int no_color, int json_output);
 
 #endif

@@ -9,7 +9,7 @@
 
 static void usage(void) {
     fprintf(stderr,
-        "Usage: khm <command> [options]\n"
+        "Usage: khm [--json] <command> [options]\n"
         "\n"
         "Commands:\n"
         "  list   [--file <path>] [--no-color]   Show known_hosts entries\n"
@@ -17,11 +17,34 @@ static void usage(void) {
         "  scan   <cidr|file>     [--file <path>] Scan hosts and check keys\n"
         "  diff   <file1> <file2>                 Diff two known_hosts files\n"
         "\n"
+        "  --json        Emit machine-readable JSON instead of formatted text\n"
+        "                (accepted anywhere on the command line)\n"
         "  -h, --help    Show this help\n"
     );
 }
 
 int main(int argc, char **argv) {
+    if (argc < 2) { usage(); return 1; }
+
+    /* ---- global --json pre-scan ----
+     * Recognised anywhere on the command line, not just before the
+     * subcommand name, so `khm verify host --json` works the same as
+     * `khm --json verify host`. Stripped out here so per-command option
+     * loops never have to know about it. */
+    int json_output = 0;
+    char *filtered[argc + 1];
+    int fargc = 0;
+    for (int i = 0; i < argc; i++) {
+        if (i > 0 && strcmp(argv[i], "--json") == 0) {
+            json_output = 1;
+            continue;
+        }
+        filtered[fargc++] = argv[i];
+    }
+    filtered[fargc] = NULL;
+    argv = filtered;
+    argc = fargc;
+
     if (argc < 2) { usage(); return 1; }
 
     const char *cmd = argv[1];
@@ -44,7 +67,7 @@ int main(int argc, char **argv) {
                 return 1;
             }
         }
-        return cmd_list(file, no_color);
+        return cmd_list(file, no_color, json_output);
     }
 
     /* ---- verify ---- */

@@ -1,5 +1,7 @@
 #include "list.h"
 #include "../parser.h"
+#include "../hostkey.h"
+#include "../json.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -47,7 +49,7 @@ static void print_keypreview(const char *b64) {
     printf(COL_RESET);
 }
 
-int cmd_list(const char *path, int no_color) {
+int cmd_list(const char *path, int no_color, int json_output) {
     char default_path[512];
     if (!path) {
         khm_default_path(default_path, sizeof(default_path));
@@ -58,6 +60,25 @@ int cmd_list(const char *path, int no_color) {
     if (khm_parse_file(path, &db) < 0) {
         fprintf(stderr, "khm: cannot open '%s'\n", path);
         return 1;
+    }
+
+    if (json_output) {
+        int first = 1;
+        khm_json_array_begin(stdout);
+        for (size_t i = 0; i < db.count; i++) {
+            khm_entry_t *e = &db.entries[i];
+            khm_json_array_next(stdout, &first);
+
+            char fp[128];
+            const char *fp_ptr = NULL;
+            if (!e->hashed && khm_fingerprint_from_b64(e->keydata_b64, fp, sizeof(fp)) == 0)
+                fp_ptr = fp;
+
+            khm_json_write_entry(stdout, e, fp_ptr);
+        }
+        khm_json_array_end(stdout);
+        khm_db_free(&db);
+        return 0;
     }
 
     if (db.count == 0) {

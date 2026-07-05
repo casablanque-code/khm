@@ -45,6 +45,38 @@ static void b64_encode(const uint8_t *src, size_t len, char *dst) {
     dst[j] = '\0';
 }
 
+/* Decode standard base64 (with or without padding) into raw bytes.
+ * dst must be large enough (3/4 of strlen(src) rounded up is safe).
+ * Returns decoded length, or (size_t)-1 on malformed input. */
+static size_t b64_decode(const char *src, uint8_t *dst, size_t dst_cap) {
+    static int8_t rev[256];
+    static int rev_ready = 0;
+    if (!rev_ready) {
+        for (int i = 0; i < 256; i++) rev[i] = -1;
+        for (int i = 0; i < 64; i++) rev[(unsigned char)B64[i]] = (int8_t)i;
+        rev_ready = 1;
+    }
+
+    size_t j = 0;
+    uint32_t acc = 0;
+    int bits = 0;
+
+    for (const char *p = src; *p; p++) {
+        if (*p == '=' || *p == '\n' || *p == '\r') continue;
+        int v = rev[(unsigned char)*p];
+        if (v < 0) return (size_t)-1; /* malformed */
+
+        acc = (acc << 6) | (uint32_t)v;
+        bits += 6;
+        if (bits >= 8) {
+            bits -= 8;
+            if (j >= dst_cap) return (size_t)-1; /* too small */
+            dst[j++] = (uint8_t)((acc >> bits) & 0xff);
+        }
+    }
+    return j;
+}
+
 /* Base64url (no padding) for SSH fingerprint display */
 static void b64url_encode_nopad(const uint8_t *src, size_t len, char *dst) {
     b64_encode(src, len, dst);
@@ -403,4 +435,23 @@ int khm_fetch_hostkey(const char *host, int port, int timeout_ms,
 
     close(fd);
     return ret;
+}
+
+/* ------------------------------------------------------------------ */
+/* Fingerprint for a known_hosts entry (no network involved)           */
+/* ------------------------------------------------------------------ */
+
+int khm_fingerprint_from_b64(const char *keydata_b64, char *out, size_t out_len) {
+    if (!keydata_b64 || !*keydata_b64) return -1;
+
+    uint8_t raw[KHM_KEYDATA_MAX];
+    size_t raw_len = b64_decode(keydata_b64, raw, sizeof(raw));
+    if (raw_len == (size_t)-1) return -1;
+
+    uint8_t digest[32];
+    khm_sha256(raw, raw_len, digest);
+
+    char b64fp[64];
+    b64url_encode_nopad(digest, 32, b64fp);
+    return snprintf(out, out_len, "SHA256:%s", b64fp) < (int)out_len ? 0 : -1;
 }

@@ -6,6 +6,7 @@ SRCS    = main.c \
           parser.c \
           sha256.c \
           hostkey.c \
+          json.c \
           commands/list.c \
           commands/verify.c \
           commands/diff.c \

@@ -25,4 +25,14 @@ typedef struct {
 int khm_fetch_hostkey(const char *host, int port, int timeout_ms,
                       khm_hostkey_t *out);
 
+/*
+ * Compute SSH-style fingerprint ("SHA256:...") from a base64-encoded
+ * key blob as stored in a known_hosts entry (khm_entry_t.keydata_b64).
+ * Purely local — no network I/O.
+ *
+ * Returns  0 on success
+ *         -1 on malformed base64 or output buffer too small
+ */
+int khm_fingerprint_from_b64(const char *keydata_b64, char *out, size_t out_len);
+
 #endif /* KHM_HOSTKEY_H */
