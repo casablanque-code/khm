@@ -13,7 +13,8 @@ SRCS    = main.c \
           commands/scan.c \
           commands/fingerprint.c \
           commands/export.c \
-          commands/normalize.c
+          commands/normalize.c \
+          commands/doctor.c
 
 OBJS    = $(SRCS:.c=.o)
 

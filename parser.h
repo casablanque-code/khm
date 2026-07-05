@@ -25,12 +25,25 @@ typedef struct {
     char      keytype_str[KHM_MAX_KEYTYPE];
     char      keydata_b64[KHM_MAX_KEYDATA];  /* raw base64 blob */
     int       port;                  /* 0 = default 22 */
+    long      line_number;           /* 1-based source line, set by khm_parse_file */
 } khm_entry_t;
+
+/* A line that looked like it should be an entry but didn't parse —
+ * distinct from comments/blank lines, which are legitimately skipped
+ * and never recorded here. */
+typedef struct {
+    long line_number;
+    char raw[256]; /* trimmed copy of the offending line, for display */
+} khm_parse_error_t;
 
 typedef struct {
     khm_entry_t *entries;
     size_t       count;
     size_t       capacity;
+
+    khm_parse_error_t *errors;
+    size_t             error_count;
+    size_t             error_capacity;
 } khm_db_t;
 
 /* Parse known_hosts file. Returns 0 on success, -1 on error. */

@@ -9,6 +9,7 @@
 #include "commands/fingerprint.h"
 #include "commands/export.h"
 #include "commands/normalize.h"
+#include "commands/doctor.h"
 
 static void usage(void) {
     fprintf(stderr,
@@ -23,6 +24,8 @@ static void usage(void) {
         "                                          Export known_hosts for audits\n"
         "  normalize [--file <path>] [--write]    Dedupe/merge/sort a known_hosts file\n"
         "                                          (prints to stdout unless --write)\n"
+        "  doctor [--file <path>] [--check-reachable]\n"
+        "                                          Health check (offline by default)\n"
         "  scan   <cidr|file>     [--file <path>] Scan hosts and check keys\n"
         "  diff   <file1> <file2>                 Diff two known_hosts files\n"
         "\n"
@@ -113,6 +116,26 @@ int main(int argc, char **argv) {
             return 1;
         }
         return cmd_verify(host_arg, file, no_color, json_output);
+    }
+
+    /* ---- doctor ---- */
+    if (strcmp(cmd, "doctor") == 0) {
+        const char *file = NULL;
+        int no_color = 0;
+        int check_reachable = 0;
+        for (int i = 2; i < argc; i++) {
+            if (strcmp(argv[i], "--file") == 0 && i + 1 < argc)
+                file = argv[++i];
+            else if (strcmp(argv[i], "--no-color") == 0)
+                no_color = 1;
+            else if (strcmp(argv[i], "--check-reachable") == 0)
+                check_reachable = 1;
+            else {
+                fprintf(stderr, "khm doctor: unknown option '%s'\n", argv[i]);
+                return 1;
+            }
+        }
+        return cmd_doctor(file, no_color, json_output, check_reachable);
     }
 
     /* ---- normalize ---- */

@@ -153,21 +153,59 @@ int khm_parse_file(const char *path, khm_db_t *db) {
     db->count    = 0;
     db->capacity = INITIAL_CAPACITY;
 
+    db->errors         = NULL;
+    db->error_count    = 0;
+    db->error_capacity = 0;
+
     char line[LINE_MAX_LEN];
+    long lineno = 0;
     while (fgets(line, sizeof(line), f)) {
+        lineno++;
+
+        /* Keep a trimmed copy for error reporting before parse_line
+         * mutates the buffer in place (ltrim/rtrim/strtok). Bounded
+         * copy done manually (not snprintf) since `line` can be up to
+         * LINE_MAX_LEN and truncation here is intentional, not a bug
+         * gcc needs to warn about. */
+        char raw_copy[256];
+        size_t copy_len = strlen(line);
+        if (copy_len >= sizeof(raw_copy)) copy_len = sizeof(raw_copy) - 1;
+        memcpy(raw_copy, line, copy_len);
+        raw_copy[copy_len] = '\0';
+        size_t rl = copy_len;
+        while (rl > 0 && (raw_copy[rl - 1] == '\n' || raw_copy[rl - 1] == '\r'))
+            raw_copy[--rl] = '\0';
+
         khm_entry_t e;
         int r = parse_line(line, &e);
-        if (r != 1) continue;
 
-        if (db->count == db->capacity) {
-            size_t newcap = db->capacity * 2;
-            khm_entry_t *tmp = realloc(db->entries,
-                                       newcap * sizeof(khm_entry_t));
-            if (!tmp) { fclose(f); return -1; }
-            db->entries  = tmp;
-            db->capacity = newcap;
+        if (r == 1) {
+            e.line_number = lineno;
+            if (db->count == db->capacity) {
+                size_t newcap = db->capacity * 2;
+                khm_entry_t *tmp = realloc(db->entries,
+                                           newcap * sizeof(khm_entry_t));
+                if (!tmp) { fclose(f); return -1; }
+                db->entries  = tmp;
+                db->capacity = newcap;
+            }
+            db->entries[db->count++] = e;
+        } else if (r == -1) {
+            if (db->error_count == db->error_capacity) {
+                size_t newcap = db->error_capacity ? db->error_capacity * 2 : 8;
+                khm_parse_error_t *tmp = realloc(db->errors, newcap * sizeof(khm_parse_error_t));
+                if (tmp) { db->errors = tmp; db->error_capacity = newcap; }
+                /* on realloc failure, just drop this one error rather
+                 * than aborting the whole parse over a cosmetic issue */
+            }
+            if (db->error_count < db->error_capacity) {
+                db->errors[db->error_count].line_number = lineno;
+                snprintf(db->errors[db->error_count].raw,
+                         sizeof(db->errors[db->error_count].raw), "%s", raw_copy);
+                db->error_count++;
+            }
         }
-        db->entries[db->count++] = e;
+        /* r == 0: comment or blank line — legitimately skipped */
     }
 
     fclose(f);
@@ -176,7 +214,11 @@ int khm_parse_file(const char *path, khm_db_t *db) {
 
 void khm_db_free(khm_db_t *db) {
     free(db->entries);
-    db->entries  = NULL;
-    db->count    = 0;
-    db->capacity = 0;
+    free(db->errors);
+    db->entries        = NULL;
+    db->count          = 0;
+    db->capacity       = 0;
+    db->errors         = NULL;
+    db->error_count    = 0;
+    db->error_capacity = 0;
 }
