@@ -6,6 +6,7 @@
 #include "commands/verify.h"
 #include "commands/diff.h"
 #include "commands/scan.h"
+#include "commands/fingerprint.h"
 
 static void usage(void) {
     fprintf(stderr,
@@ -15,6 +16,7 @@ static void usage(void) {
         "  list   [--file <path>] [--no-color]   Show known_hosts entries\n"
         "  verify <host[:port]>   [--file <path>] Verify host key against known_hosts\n"
         "  verify --all           [--file <path>] Verify every host in known_hosts\n"
+        "  fingerprint <host[:port]>              Show a host's live key fingerprint\n"
         "  scan   <cidr|file>     [--file <path>] Scan hosts and check keys\n"
         "  diff   <file1> <file2>                 Diff two known_hosts files\n"
         "\n"
@@ -105,6 +107,27 @@ int main(int argc, char **argv) {
             return 1;
         }
         return cmd_verify(host_arg, file, no_color, json_output);
+    }
+
+    /* ---- fingerprint ---- */
+    if (strcmp(cmd, "fingerprint") == 0) {
+        const char *host_arg = NULL;
+        int no_color = 0;
+        for (int i = 2; i < argc; i++) {
+            if (strcmp(argv[i], "--no-color") == 0)
+                no_color = 1;
+            else if (!host_arg)
+                host_arg = argv[i];
+            else {
+                fprintf(stderr, "khm fingerprint: unexpected argument '%s'\n", argv[i]);
+                return 1;
+            }
+        }
+        if (!host_arg) {
+            fprintf(stderr, "usage: khm fingerprint <host[:port]>\n");
+            return 1;
+        }
+        return cmd_fingerprint(host_arg, no_color, json_output);
     }
 
     /* ---- diff ---- */

@@ -19,42 +19,6 @@
 #define VERIFY_TIMEOUT_MS 5000
 
 /* ------------------------------------------------------------------ */
-/* Parse "host" or "host:port" or "[host]:port"                        */
-/* ------------------------------------------------------------------ */
-
-static void parse_host_arg(const char *arg, char *host, size_t hlen, int *port) {
-    *port = 22;
-
-    /* [host]:port */
-    if (arg[0] == '[') {
-        const char *close = strchr(arg, ']');
-        if (close) {
-            size_t n = (size_t)(close - arg - 1);
-            if (n >= hlen) n = hlen - 1;
-            memcpy(host, arg + 1, n);
-            host[n] = '\0';
-            if (*(close + 1) == ':') *port = atoi(close + 2);
-            return;
-        }
-    }
-
-    /* host:port — but only if there's exactly one colon
-       (IPv6 addresses have multiple colons, skip them) */
-    const char *colon = strchr(arg, ':');
-    if (colon && strchr(colon + 1, ':') == NULL) {
-        size_t n = (size_t)(colon - arg);
-        if (n >= hlen) n = hlen - 1;
-        memcpy(host, arg, n);
-        host[n] = '\0';
-        *port = atoi(colon + 1);
-        return;
-    }
-
-    strncpy(host, arg, hlen - 1);
-    host[hlen - 1] = '\0';
-}
-
-/* ------------------------------------------------------------------ */
 /* Match a db entry against host+port                                  */
 /* ------------------------------------------------------------------ */
 
@@ -115,7 +79,7 @@ static khm_status_t verify_host_against_db(const char *host, int port,
 int cmd_verify(const char *host_arg, const char *file, int no_color, int json_output) {
     char host[256];
     int  port;
-    parse_host_arg(host_arg, host, sizeof(host), &port);
+    khm_parse_host_port(host_arg, host, sizeof(host), &port);
 
     /* resolve known_hosts path */
     char default_path[512];

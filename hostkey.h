@@ -26,6 +26,14 @@ int khm_fetch_hostkey(const char *host, int port, int timeout_ms,
                       khm_hostkey_t *out);
 
 /*
+ * Parse "host", "host:port", or "[host]:port" into separate host/port.
+ * Defaults port to 22 if not specified. IPv6 addresses with multiple
+ * colons and no brackets are treated as bare hostnames (ambiguous
+ * without brackets, same convention ssh itself uses).
+ */
+void khm_parse_host_port(const char *arg, char *host, size_t hlen, int *port);
+
+/*
  * Compute SSH-style fingerprint ("SHA256:...") from a base64-encoded
  * key blob as stored in a known_hosts entry (khm_entry_t.keydata_b64).
  * Purely local — no network I/O.
