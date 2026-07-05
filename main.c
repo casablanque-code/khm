@@ -7,6 +7,7 @@
 #include "commands/diff.h"
 #include "commands/scan.h"
 #include "commands/fingerprint.h"
+#include "commands/export.h"
 
 static void usage(void) {
     fprintf(stderr,
@@ -17,6 +18,8 @@ static void usage(void) {
         "  verify <host[:port]>   [--file <path>] Verify host key against known_hosts\n"
         "  verify --all           [--file <path>] Verify every host in known_hosts\n"
         "  fingerprint <host[:port]>              Show a host's live key fingerprint\n"
+        "  export [--file <path>] [--format csv|md|html|json]\n"
+        "                                          Export known_hosts for audits\n"
         "  scan   <cidr|file>     [--file <path>] Scan hosts and check keys\n"
         "  diff   <file1> <file2>                 Diff two known_hosts files\n"
         "\n"
@@ -107,6 +110,23 @@ int main(int argc, char **argv) {
             return 1;
         }
         return cmd_verify(host_arg, file, no_color, json_output);
+    }
+
+    /* ---- export ---- */
+    if (strcmp(cmd, "export") == 0) {
+        const char *file   = NULL;
+        const char *format = NULL; /* defaults to csv inside cmd_export */
+        for (int i = 2; i < argc; i++) {
+            if (strcmp(argv[i], "--file") == 0 && i + 1 < argc)
+                file = argv[++i];
+            else if (strcmp(argv[i], "--format") == 0 && i + 1 < argc)
+                format = argv[++i];
+            else {
+                fprintf(stderr, "khm export: unknown option '%s'\n", argv[i]);
+                return 1;
+            }
+        }
+        return cmd_export(file, format, json_output);
     }
 
     /* ---- fingerprint ---- */

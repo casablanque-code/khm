@@ -11,7 +11,8 @@ SRCS    = main.c \
           commands/verify.c \
           commands/diff.c \
           commands/scan.c \
-          commands/fingerprint.c
+          commands/fingerprint.c \
+          commands/export.c
 
 OBJS    = $(SRCS:.c=.o)
 
