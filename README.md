@@ -292,4 +292,4 @@ Requires: `gcc`, `make`, `glibc` (or `musl` for static builds). Nothing else.
 
 ## License
 
-MIT
+Apache 2.0
