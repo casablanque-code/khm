@@ -245,10 +245,11 @@ int cmd_verify_all(const char *file, int no_color, int json_output) {
 
     khm_target_t *targets = NULL;
     size_t t_count = 0, t_cap = 0;
+    size_t hashed_skipped = 0;
 
     for (size_t i = 0; i < db.count; i++) {
         const khm_entry_t *e = &db.entries[i];
-        if (e->hashed) continue; /* hostname unrecoverable — can't connect to it */
+        if (e->hashed) { hashed_skipped++; continue; } /* hostname unrecoverable — can't connect to it */
 
         int port = e->port ? e->port : 22;
         for (int j = 0; j < e->hostname_count; j++) {
@@ -318,6 +319,10 @@ int cmd_verify_all(const char *file, int no_color, int json_output) {
         if (n_new)         printf("  %s%d new%s",         C(COL_YELLOW), n_new,         C(COL_RESET));
         if (n_unreachable) printf("  %s%d unreachable%s", C(COL_DIM),    n_unreachable, C(COL_RESET));
         printf("\n");
+        if (hashed_skipped > 0) {
+            printf("%s(%zu hashed entr%s skipped — hostname unknown, can't verify without it)%s\n",
+                   C(COL_DIM), hashed_skipped, hashed_skipped == 1 ? "y" : "ies", C(COL_RESET));
+        }
     }
 
     free(targets);

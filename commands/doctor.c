@@ -214,10 +214,11 @@ static int add_target(target_t **targets, size_t *count, size_t *cap, const char
 static void check_unreachable(const khm_db_t *db, findings_t *f) {
     target_t *targets = NULL;
     size_t t_count = 0, t_cap = 0;
+    size_t hashed_skipped = 0;
 
     for (size_t i = 0; i < db->count; i++) {
         const khm_entry_t *e = &db->entries[i];
-        if (e->hashed) continue;
+        if (e->hashed) { hashed_skipped++; continue; }
         int port = e->port ? e->port : 22;
         for (int h = 0; h < e->hostname_count; h++) {
             if (add_target(&targets, &t_count, &t_cap, e->hostnames[h], port) < 0) {
@@ -225,6 +226,19 @@ static void check_unreachable(const khm_db_t *db, findings_t *f) {
                 return;
             }
         }
+    }
+
+    if (t_count == 0 && hashed_skipped > 0) {
+        /* --check-reachable was requested but there was nothing it
+         * could actually test — surfaced as info, not folded into the
+         * unreachable_host check name, so it doesn't make the
+         * checklist header look like a failure when nothing failed. */
+        add_finding(f, "reachability_note", SEV_INFO,
+                    "--check-reachable had nothing to test: all %zu entr%s are hashed "
+                    "(hostname unknown, can't connect)",
+                    hashed_skipped, hashed_skipped == 1 ? "y" : "ies");
+        free(targets);
+        return;
     }
 
     for (size_t i = 0; i < t_count; i++) {
