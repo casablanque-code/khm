@@ -10,7 +10,25 @@ A CLI tool for managing SSH `known_hosts` files. No libssh, no OpenSSL, no nothi
 
 ## Why
 
-SSH gives you no good way to audit or compare `known_hosts` files. You either trust TOFU, grep through a plain-text file, or disable `StrictHostKeyChecking` in scripts. `khm` fills that gap.
+`known_hosts` is your database of trusted server identities, yet OpenSSH gives you almost no tooling to inspect, compare, audit, or maintain it. You either trust TOFU blindly, grep through a plain-text file by hand, or disable `StrictHostKeyChecking` in scripts and give up on verification entirely. `khm` treats `known_hosts` as what it actually is — a security asset — not a cache you can delete and rebuild without thinking.
+
+| Task | OpenSSH | khm |
+|---|---|---|
+| List trusted hosts | `grep` | ✅ |
+| Verify one host | `ssh` + compare manually | ✅ |
+| Verify all hosts | ❌ | ✅ |
+| Compare two known_hosts | ❌ | ✅ |
+| Export to CSV/Markdown/HTML | ❌ | ✅ |
+| Health check (dupes, weak algos, malformed lines) | ❌ | ✅ |
+
+### Real-world use cases
+
+- **CI/CD gate** — `khm verify --all` before a deploy step, fail the pipeline on drift instead of silently trusting whatever's on the runner.
+- **Workstation audit** — sweep a fleet of dev laptops with `khm doctor` to catch stale RSA/DSS entries and duplicate junk that's accumulated over years.
+- **Post key-rotation check** — after rotating a server's host key, confirm every client's `known_hosts` picked it up cleanly instead of silently falling back to unchecked TOFU.
+- **Migration diff** — `khm diff old_known_hosts new_known_hosts` when moving to a new bastion or jump host, to see exactly what changed.
+- **Scheduled drift detection** — `khm doctor && khm verify --all` on a cron, alerting the moment a host key changes unexpectedly.
+- **Onboarding** — `khm export --format md` to drop a readable table of trusted hosts straight into internal docs.
 
 ## Install
 
@@ -237,7 +255,9 @@ Exit code `1` if there's any `error` or `warning` finding; `info` alone never fa
 
 ## How it works
 
-`khm verify` and `khm scan` connect over raw TCP, exchange SSH version banners, send a `SSH_MSG_KEXINIT`, then a `SSH_MSG_KEX_ECDH_INIT`. The server responds with `SSH_MSG_KEX_ECDH_REPLY` which contains the host public key blob. The connection is closed immediately after — no authentication, no encryption negotiated.
+No authentication. No session. No shell. Just enough of the SSH handshake to obtain the host key.
+
+`khm verify` and `khm scan` connect over raw TCP, exchange SSH version banners, send a `SSH_MSG_KEXINIT`, then a `SSH_MSG_KEX_ECDH_INIT`. The server responds with `SSH_MSG_KEX_ECDH_REPLY`, which contains the host public key blob — and the connection is closed immediately after.
 
 The SHA-256 fingerprint is computed from the raw key blob using a self-contained implementation (no libcrypto). This matches the output of `ssh-keygen -lf`.
 
