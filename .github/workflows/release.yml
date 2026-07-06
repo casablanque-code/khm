@@ -19,13 +19,8 @@ jobs:
 
       - name: Build static binary (musl)
         run: |
-          CC=musl-gcc make clean
-          musl-gcc -std=c11 -Wall -Wextra -O2 -D_POSIX_C_SOURCE=200809L \
-            -static -o khm-linux-amd64 \
-            main.c parser.c sha256.c hostkey.c \
-            commands/list.c commands/verify.c \
-            commands/diff.c commands/scan.c \
-            -lpthread
+          make clean
+          make release CC=musl-gcc CFLAGS="-std=c11 -Wall -Wextra -O2 -D_POSIX_C_SOURCE=200809L -static"
           strip khm-linux-amd64
           sha256sum khm-linux-amd64 > khm-linux-amd64.sha256
 

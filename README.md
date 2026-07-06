@@ -30,6 +30,8 @@ sudo cp khm /usr/local/bin/
 
 ## Usage
 
+Every command accepts a global `--json` flag, in any position on the command line (`khm --json verify host` and `khm verify host --json` are equivalent). It emits machine-readable JSON instead of formatted text — useful for CI, Ansible, or anything scripted.
+
 ### `list` — inspect your known_hosts
 
 ```
@@ -71,6 +73,43 @@ Useful in provisioning scripts:
 ```bash
 khm verify myserver.example.com || echo "WARNING: host key mismatch"
 ```
+
+**`verify --all`** checks every non-hashed host already in the file — a regular drift check, not a one-off:
+
+```
+khm verify --all [--file <path>] [--no-color]
+```
+
+```
+  OK           github.com
+  OK           gitlab.com
+  CHANGED      oldserver.example.com
+  UNREACHABLE  decommissioned.example.com
+
+4 hosts  2 OK  1 changed  1 unreachable
+```
+
+Exit code `0` only if nothing changed and everything was reachable — plug it into a cron job or CI step:
+
+```bash
+khm verify --all || alert "known_hosts drift detected"
+```
+
+---
+
+### `fingerprint` — check a host's key before you trust it
+
+```
+khm fingerprint <host[:port]>
+```
+
+```
+  host:  github.com
+  type:  ssh-ed25519
+  fp:    SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU
+```
+
+Unlike `verify`, this never touches `known_hosts` — it's the "what would TOFU show me right now" check, useful before you've ever connected, or when comparing against a fingerprint published out-of-band (e.g. GitHub's [SSH key fingerprints page](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/githubs-ssh-key-fingerprints)).
 
 ---
 
@@ -124,6 +163,78 @@ Hosts are scanned in parallel (up to 64 threads). Returns exit code `1` if any k
 
 ---
 
+### `export` — get known_hosts data out, for audits
+
+```
+khm export [--file <path>] [--format csv|md|html|json]
+```
+
+```bash
+khm export --format csv > known_hosts.csv
+khm export --format md   # paste straight into a wiki page or PR description
+```
+
+Defaults to CSV. Hashed entries are included with a `<hashed>` placeholder and no fingerprint (can't be computed without the real hostname). Multiple hostnames sharing a line are joined with `;` so the comma stays the CSV delimiter.
+
+---
+
+### `normalize` — dedupe, merge, sort a known_hosts file
+
+```
+khm normalize [--file <path>] [--write]
+```
+
+```bash
+khm normalize --file ~/.ssh/known_hosts          # preview to stdout, file untouched
+khm normalize --file ~/.ssh/known_hosts --write  # apply, atomically
+```
+
+```
+zulu.example,alpha.example ssh-ed25519 AAAA...
+gitlab.com ssh-rsa AAAA...
+
+khm normalize: 6 lines -> 2 lines  (2 exact duplicates removed, 1 merged by shared key)
+```
+
+Single-file only, on purpose: it will merge two lines into one when they share the exact same algorithm+key (that's just cosmetic — same key, same trusted identity), and it will drop exact duplicate lines (including duplicate *hashed* entries, which you can't otherwise spot by eye). It will **not** merge `known_hosts` with `known_hosts.old` or any second file — that kind of merge can silently paper over a real key change, which is exactly what `doctor` and `verify` exist to catch instead. `--write` replaces the file atomically (write to a temp file, then rename), so a crash mid-write can't corrupt your original.
+
+---
+
+### `doctor` — health check for known_hosts
+
+```
+khm doctor [--file <path>] [--check-reachable]
+```
+
+```
+  ✓ malformed_line
+  ✘ duplicate_entries (1)
+  ✘ hashed_duplicate (1)
+  ✘ obsolete_algorithm (1)
+  ✓ mixed_algorithms
+
+  warn   [duplicate_entries]    line 3 is an exact duplicate of line 2 (github.com)
+  warn   [hashed_duplicate]     line 6 has the same hashed host as line 5 but a DIFFERENT key (stale entry after rotation?)
+  warn   [obsolete_algorithm]   line 4 uses ssh-dss (DSA, deprecated) for legacy.example
+
+3 findings  3 warnings
+```
+
+Six checks, five of them fully offline:
+
+| check | severity | catches |
+|---|---|---|
+| `malformed_line` | error | a line missing required fields |
+| `duplicate_entries` | warning | exact duplicate plain-text lines |
+| `hashed_duplicate` | warning | duplicate *hashed* entries — you can't eyeball these, the hostname is hidden |
+| `obsolete_algorithm` | warning | `ssh-rsa` / `ssh-dss` |
+| `mixed_algorithms` | info only | one host offering several key types — often intentional, never fails the run |
+| `unreachable_host` | warning | opt-in via `--check-reachable`, the only check that touches the network |
+
+Exit code `1` if there's any `error` or `warning` finding; `info` alone never fails the run. Key-size checks (e.g. flagging small RSA moduli) are planned for a later release — they need a base64/ASN.1 decode step that didn't make it into this one.
+
+---
+
 ## How it works
 
 `khm verify` and `khm scan` connect over raw TCP, exchange SSH version banners, send a `SSH_MSG_KEXINIT`, then a `SSH_MSG_KEX_ECDH_INIT`. The server responds with `SSH_MSG_KEX_ECDH_REPLY` which contains the host public key blob. The connection is closed immediately after — no authentication, no encryption negotiated.
@@ -135,11 +246,16 @@ The SHA-256 fingerprint is computed from the raw key blob using a self-contained
 ```
 khm/
 ├── parser.c / parser.h      known_hosts parser
-├── hostkey.c / hostkey.h    TCP + partial SSH handshake
+├── hostkey.c / hostkey.h    TCP + partial SSH handshake, host:port parsing
 ├── sha256.c / sha256.h      SHA-256, RFC 6234
+├── json.c / json.h          --json serialization (shared by every command)
 └── commands/
     ├── list.c               pretty-print known_hosts
-    ├── verify.c             verify single host
+    ├── verify.c             verify single host / verify --all
+    ├── fingerprint.c        live key fingerprint, no known_hosts involved
+    ├── export.c             csv/md/html/json export
+    ├── normalize.c          dedupe/merge/sort a known_hosts file
+    ├── doctor.c             health check
     ├── diff.c               diff two files
     └── scan.c               parallel network scan
 ```
