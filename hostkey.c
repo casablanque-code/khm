@@ -6,6 +6,7 @@
 #include <string.h>
 #include <stdint.h>
 #include <errno.h>
+#include <time.h>
 
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -287,6 +288,21 @@ static void write_str(uint8_t *buf, size_t *pos, const char *s) {
     *pos += len;
 }
 
+/* Seeded once, used for both the KEXINIT cookie and the ECDH ephemeral
+ * key below. Not cryptographic quality and doesn't need to be — the
+ * exchange is discarded right after we read the host key, no
+ * encryption is ever negotiated. It only needs to avoid landing on
+ * one of the handful of known low-order curve25519 points (see
+ * send_kex_ecdh_init) — see rand() is more than enough for that. */
+static void khm_rand_bytes(uint8_t *buf, size_t len) {
+    static int seeded = 0;
+    if (!seeded) {
+        srand((unsigned)(time(NULL) ^ (unsigned)getpid()));
+        seeded = 1;
+    }
+    for (size_t i = 0; i < len; i++) buf[i] = (uint8_t)(rand() & 0xff);
+}
+
 static int send_kexinit(int fd) {
     uint8_t payload[1024];
     size_t  p = 0;
@@ -294,7 +310,12 @@ static int send_kexinit(int fd) {
     payload[p++] = SSH_MSG_KEXINIT;
 
     /* 16 bytes random cookie */
-    for (int i = 0; i < 16; i++) payload[p++] = (uint8_t)(rand() & 0xff);
+    {
+        uint8_t cookie[16];
+        khm_rand_bytes(cookie, sizeof(cookie));
+        memcpy(payload + p, cookie, sizeof(cookie));
+        p += sizeof(cookie);
+    }
 
     /* name-list fields (10 of them) */
     const char *kex_algs     = "curve25519-sha256,ecdh-sha2-nistp256";
@@ -334,12 +355,17 @@ static int send_kexinit(int fd) {
 }
 
 /* Send a minimal ephemeral ECDH public key so the server sends back
-   its host key in KEX_ECDH_REPLY.  We use a static dummy key — we
-   don't care about the shared secret, only the host key blob. */
+   its host key in KEX_ECDH_REPLY. We don't care about the resulting
+   shared secret (the connection is torn down right after we read the
+   host key, no encryption is ever negotiated) — but the key still has
+   to be a *plausible* curve25519 point. All-zero is one of a small
+   set of known low-order points, and RFC 8731 requires servers to
+   check for and reject exactly these — a compliant modern sshd
+   (GitHub's included) will silently drop the connection right here
+   rather than reply. Random bytes avoid landing on any of them. */
 static int send_kex_ecdh_init(int fd) {
-    /* 32-byte all-zeros "ephemeral" key — invalid for actual crypto
-       but sufficient to elicit KEX_ECDH_REPLY from the server */
-    uint8_t ephemeral[32] = {0};
+    uint8_t ephemeral[32];
+    khm_rand_bytes(ephemeral, sizeof(ephemeral));
 
     uint8_t payload[64];
     size_t  p = 0;
