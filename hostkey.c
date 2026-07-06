@@ -245,6 +245,34 @@ static const uint8_t *read_str(const uint8_t *buf, size_t buf_len,
 #define SSH_MSG_KEX_ECDH_INIT   30
 #define SSH_MSG_KEX_ECDH_REPLY  31
 
+/* Diagnostic-only tracing, off unless KHM_DEBUG=1 is set. Does not
+ * change any protocol behavior — pure stderr narration to find out
+ * *where* a handshake fails without guessing. */
+static int khm_debug_enabled(void) {
+    static int checked = 0, enabled = 0;
+    if (!checked) {
+        const char *v = getenv("KHM_DEBUG");
+        enabled = (v && *v && strcmp(v, "0") != 0);
+        checked = 1;
+    }
+    return enabled;
+}
+#define KHM_DBG(...) do { if (khm_debug_enabled()) fprintf(stderr, "[khm-debug] " __VA_ARGS__); } while (0)
+
+/* SSH_MSG_DISCONNECT payload: uint32 reason_code, string description,
+ * string language_tag. If the server sends this instead of what we
+ * were waiting for, it is telling us exactly why — always worth
+ * surfacing even outside debug mode, since "protocol failure" alone
+ * throws away information the server handed us for free. */
+static void report_disconnect(const uint8_t *payload, size_t plen) {
+    size_t pos = 1; /* skip msg type */
+    uint32_t reason = read_u32(payload, plen, &pos);
+    uint32_t desc_len;
+    const uint8_t *desc = read_str(payload, plen, &pos, &desc_len);
+    fprintf(stderr, "khm: server sent SSH_MSG_DISCONNECT (reason %u): %.*s\n",
+            reason, desc ? (int)desc_len : 0, desc ? (const char *)desc : "");
+}
+
 static void write_u32(uint8_t *buf, size_t *pos, uint32_t v) {
     buf[(*pos)++] = (v >> 24) & 0xff;
     buf[(*pos)++] = (v >> 16) & 0xff;
@@ -387,46 +415,96 @@ int khm_fetch_hostkey(const char *host, int port, int timeout_ms,
     memset(out, 0, sizeof(*out));
 
     int fd = tcp_connect(host, port, timeout_ms);
-    if (fd < 0) return fd;
+    if (fd < 0) {
+        KHM_DBG("tcp_connect failed (%d)\n", fd);
+        return fd;
+    }
+    KHM_DBG("tcp connected to %s:%d\n", host, port);
 
     /* SSH version exchange */
     char banner[256];
     /* read server banner — may be preceded by informational lines */
+    int got_banner = 0;
     for (int tries = 0; tries < 16; tries++) {
-        if (recv_line(fd, banner, sizeof(banner)) < 0) { close(fd); return -1; }
-        if (strncmp(banner, "SSH-", 4) == 0) break;
+        if (recv_line(fd, banner, sizeof(banner)) < 0) {
+            KHM_DBG("recv_line failed while waiting for banner (try %d)\n", tries);
+            close(fd);
+            return -1;
+        }
+        if (strncmp(banner, "SSH-", 4) == 0) { got_banner = 1; break; }
+        KHM_DBG("skipping pre-banner line: %s", banner);
     }
-    if (strncmp(banner, "SSH-", 4) != 0) { close(fd); return -1; }
+    if (!got_banner) { KHM_DBG("never saw a line starting with SSH-\n"); close(fd); return -1; }
+    KHM_DBG("server banner: %s", banner);
 
     /* send our banner */
     const char *our_banner = "SSH-2.0-khm_0.1\r\n";
-    if (send(fd, our_banner, strlen(our_banner), 0) < 0) { close(fd); return -1; }
+    if (send(fd, our_banner, strlen(our_banner), 0) < 0) {
+        KHM_DBG("send(our banner) failed: %s\n", strerror(errno));
+        close(fd);
+        return -1;
+    }
 
     /* send KEXINIT */
-    if (send_kexinit(fd) < 0) { close(fd); return -1; }
+    if (send_kexinit(fd) < 0) {
+        KHM_DBG("send_kexinit failed: %s\n", strerror(errno));
+        close(fd);
+        return -1;
+    }
+    KHM_DBG("sent our KEXINIT\n");
 
     /* read packets until we get KEXINIT from server */
     int got_server_kexinit = 0;
     for (int i = 0; i < 8 && !got_server_kexinit; i++) {
         ssh_packet_t pkt;
-        if (read_packet(fd, &pkt) < 0) { close(fd); return -1; }
+        if (read_packet(fd, &pkt) < 0) {
+            KHM_DBG("read_packet failed while waiting for server KEXINIT (try %d)\n", i);
+            close(fd);
+            return -1;
+        }
+        KHM_DBG("received packet, msg type %d, len %zu\n",
+                pkt.len > 0 ? pkt.data[0] : -1, pkt.len);
+        if (pkt.len > 0 && pkt.data[0] == SSH_MSG_DISCONNECT) {
+            report_disconnect(pkt.data, pkt.len);
+            free_packet(&pkt);
+            close(fd);
+            return -1;
+        }
         if (pkt.len > 0 && pkt.data[0] == SSH_MSG_KEXINIT)
             got_server_kexinit = 1;
         free_packet(&pkt);
     }
-    if (!got_server_kexinit) { close(fd); return -1; }
+    if (!got_server_kexinit) { KHM_DBG("never got server KEXINIT within retry budget\n"); close(fd); return -1; }
+    KHM_DBG("got server KEXINIT\n");
 
     /* send ECDH init to trigger KEX_ECDH_REPLY */
-    if (send_kex_ecdh_init(fd) < 0) { close(fd); return -1; }
+    if (send_kex_ecdh_init(fd) < 0) {
+        KHM_DBG("send_kex_ecdh_init failed: %s\n", strerror(errno));
+        close(fd);
+        return -1;
+    }
+    KHM_DBG("sent KEX_ECDH_INIT\n");
 
     /* read packets until KEX_ECDH_REPLY */
     int ret = -1;
     for (int i = 0; i < 8; i++) {
         ssh_packet_t pkt;
-        if (read_packet(fd, &pkt) < 0) break;
+        if (read_packet(fd, &pkt) < 0) {
+            KHM_DBG("read_packet failed while waiting for KEX_ECDH_REPLY (try %d)\n", i);
+            break;
+        }
+        KHM_DBG("received packet, msg type %d, len %zu\n",
+                pkt.len > 0 ? pkt.data[0] : -1, pkt.len);
+
+        if (pkt.len > 0 && pkt.data[0] == SSH_MSG_DISCONNECT) {
+            report_disconnect(pkt.data, pkt.len);
+            free_packet(&pkt);
+            break;
+        }
 
         if (pkt.len > 0 && pkt.data[0] == SSH_MSG_KEX_ECDH_REPLY) {
             ret = parse_kex_ecdh_reply(pkt.data, pkt.len, out);
+            KHM_DBG("parsed KEX_ECDH_REPLY, result %d\n", ret);
             free_packet(&pkt);
             break;
         }
