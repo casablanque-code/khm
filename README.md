@@ -50,10 +50,20 @@ sudo cp khm /usr/local/bin/
 
 Every command accepts a global `--json` flag, in any position on the command line (`khm --json verify host` and `khm verify host --json` are equivalent). It emits machine-readable JSON instead of formatted text — useful for CI, Ansible, or anything scripted.
 
+### Global Options
+
+These flags work across all commands:
+- **Custom Port:** Append it directly to the host string: `khm verify myserver.com:2222`
+- **Custom File:** Pass `--file <path>` to override the default `~/.ssh/known_hosts`.
+- **Machine Readable:** Pass `--json` in any position to emit structured JSON instead of text.
+- **No Colors:** Pass `--no-color` to disable ANSI terminal styling.
+
+---
+
 ### `list` — inspect your known_hosts
 
 ```
-khm list [--file <path>] [--no-color]
+khm list
 ```
 
 ```
@@ -74,7 +84,7 @@ Key types are color-coded: ED25519 green, ECDSA blue, RSA yellow, hashed entries
 ### `verify` — check a host against known_hosts
 
 ```
-khm verify <host[:port]> [--file <path>] [--no-color]
+khm verify github.com
 ```
 
 ```
@@ -95,7 +105,7 @@ khm verify myserver.example.com || echo "WARNING: host key mismatch"
 **`verify --all`** checks every non-hashed host already in the file — a regular drift check, not a one-off:
 
 ```
-khm verify --all [--file <path>] [--no-color]
+khm verify --all
 ```
 
 ```
@@ -113,12 +123,18 @@ Exit code `0` only if nothing changed and everything was reachable — plug it i
 khm verify --all || alert "known_hosts drift detected"
 ```
 
+⚠️ Note on Hashed Entries: If your OpenSSH has HashKnownHosts yes enabled (the default on many distros), hostnames are cryptographically hashed. khm verify --all will skip these because it's mathematically impossible to recover the IP/domain from the hash to connect to it. To verify hashed entries, use explicit target invocation: 
+
+```bash
+khm verify github.com
+```
+
 ---
 
 ### `fingerprint` — check a host's key before you trust it
 
 ```
-khm fingerprint <host[:port]>
+khm fingerprint github.com
 ```
 
 ```
@@ -134,7 +150,7 @@ Unlike `verify`, this never touches `known_hosts` — it's the "what would TOFU 
 ### `diff` — compare two known_hosts files
 
 ```
-khm diff <file1> <file2> [--no-color]
+khm diff <file1> <file2>
 ```
 
 ```
