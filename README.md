@@ -33,9 +33,9 @@ A CLI tool for managing SSH `known_hosts` files. No libssh, no OpenSSL, no nothi
 ## Install
 
 ```bash
-curl -Lo /usr/local/bin/khm \
-  https://github.com/casablanque-code/khm/releases/latest/download/khm-linux-amd64
-chmod +x /usr/local/bin/khm
+curl -Lo khm https://github.com/casablanque-code/khm/releases/latest/download/khm-linux-amd64
+chmod +x khm
+sudo mv khm /usr/local/bin/
 ```
 
 Or build from source (requires only `gcc` and `make`):
