@@ -11,12 +11,16 @@
 #include "commands/normalize.h"
 #include "commands/doctor.h"
 
+#ifndef KHM_VERSION
+#define KHM_VERSION "unknown"
+#endif
+
 static void usage(void) {
     fprintf(stderr,
         "Usage: khm [--json] <command> [options]\n"
         "\n"
         "Commands:\n"
-        "  list   [--file <path>] [--no-color]   Show known_hosts entries\n"
+        "  list, ls [--file <path>] [--no-color]  Show known_hosts entries\n"
         "  verify <host[:port]>   [--file <path>] Verify host key against known_hosts\n"
         "  verify --all           [--file <path>] Verify every host in known_hosts\n"
         "  fingerprint <host[:port]>              Show a host's live key fingerprint\n"
@@ -29,14 +33,20 @@ static void usage(void) {
         "  scan   <cidr|file>     [--file <path>] Scan hosts and check keys\n"
         "  diff   <file1> <file2>                 Diff two known_hosts files\n"
         "\n"
-        "  --json        Emit machine-readable JSON instead of formatted text\n"
-        "                (accepted anywhere on the command line)\n"
-        "  -h, --help    Show this help\n"
+        "  --json           Emit machine-readable JSON instead of formatted text\n"
+        "                    (accepted anywhere on the command line)\n"
+        "  -h, --help        Show this help\n"
+        "  -v, --version     Show version and exit\n"
     );
 }
 
 int main(int argc, char **argv) {
     if (argc < 2) { usage(); return 1; }
+
+    if (strcmp(argv[1], "-v") == 0 || strcmp(argv[1], "--version") == 0) {
+        printf("khm %s\n", KHM_VERSION);
+        return 0;
+    }
 
     /* ---- global --json pre-scan ----
      * Recognised anywhere on the command line, not just before the
@@ -65,8 +75,13 @@ int main(int argc, char **argv) {
         usage(); return 0;
     }
 
+    if (strcmp(cmd, "-v") == 0 || strcmp(cmd, "--version") == 0) {
+        printf("khm %s\n", KHM_VERSION);
+        return 0;
+    }
+
     /* ---- list ---- */
-    if (strcmp(cmd, "list") == 0) {
+    if (strcmp(cmd, "list") == 0 || strcmp(cmd, "ls") == 0) {
         const char *file = NULL;
         int no_color = 0;
         for (int i = 2; i < argc; i++) {

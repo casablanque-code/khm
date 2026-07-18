@@ -57,13 +57,15 @@ These flags work across all commands:
 - **Custom File:** Pass `--file <path>` to override the default `~/.ssh/known_hosts`.
 - **Machine Readable:** Pass `--json` in any position to emit structured JSON instead of text.
 - **No Colors:** Pass `--no-color` to disable ANSI terminal styling.
+- **Version:** `khm --version` (or `-v`) prints the exact build (`git describe`), so you can always tell what's actually installed.
 
 ---
 
-### `list` — inspect your known_hosts
+### `list` (alias: `ls`) — inspect your known_hosts
 
 ```
 khm list
+khm ls        # same thing
 ```
 
 ```

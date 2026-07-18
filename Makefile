@@ -1,4 +1,6 @@
 CC      = gcc
+KHM_VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo unknown)
+VERSION_DEF = -DKHM_VERSION=\"$(KHM_VERSION)\"
 CFLAGS  = -std=c11 -Wall -Wextra -Wpedantic -O2 -D_POSIX_C_SOURCE=200809L
 TARGET  = khm
 
@@ -26,13 +28,13 @@ $(TARGET): $(OBJS)
 	$(CC) $(CFLAGS) -o $@ $^ -lpthread
 
 %.o: %.c
-	$(CC) $(CFLAGS) -c -o $@ $<
+	$(CC) $(CFLAGS) $(VERSION_DEF) -c -o $@ $<
 
 clean:
 	rm -f $(OBJS) $(TARGET) tests/*.o tests/test_parser tests/test_json tests/test_hostkey_packet
 
 release: clean
-	$(CC) $(CFLAGS) -static -o khm-linux-amd64 $(SRCS) -lpthread
+	$(CC) $(CFLAGS) $(VERSION_DEF) -static -o khm-linux-amd64 $(SRCS) -lpthread
 
 # --- tests ---------------------------------------------------------
 # Dependency-free: each test binary links directly against the
@@ -42,10 +44,11 @@ release: clean
 TEST_CFLAGS = -std=c11 -Wall -Wextra -D_POSIX_C_SOURCE=200809L -g
 
 .PHONY: test
-test: tests/test_parser tests/test_json tests/test_hostkey_packet
+test: tests/test_parser tests/test_json tests/test_hostkey_packet $(TARGET)
 	@echo "=== parser ===";         ./tests/test_parser
 	@echo "=== json ===";           ./tests/test_json
 	@echo "=== hostkey packet ===";  ./tests/test_hostkey_packet
+	@echo "=== cli smoke ===";      ./tests/cli_smoke.sh ./$(TARGET)
 
 tests/test_parser: tests/test_parser.c parser.c
 	$(CC) $(TEST_CFLAGS) -o $@ tests/test_parser.c parser.c
