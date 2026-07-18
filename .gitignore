@@ -1,2 +1,5 @@
 *.o
 khm
+tests/test_parser
+tests/test_json
+tests/test_hostkey_packet

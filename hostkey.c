@@ -179,6 +179,36 @@ typedef struct {
     size_t   len;
 } ssh_packet_t;
 
+/* Validate an SSH binary packet header (RFC 4253 §6) and derive the
+ * number of bytes still to read off the wire (`total`, i.e. everything
+ * after the 5-byte header) and the resulting payload length.
+ *
+ * pad_len is attacker-controlled (0-255) and is NOT implicitly bounded
+ * by pkt_len just because both come from the same header — a hostile
+ * or compromised server can send pkt_len=2, pad_len=255. Without the
+ * check below, `pkt_len - 1 - pad_len` underflows in uint32_t
+ * arithmetic to a huge value, which then gets stored as pkt->len while
+ * the actual buffer allocated (`total = pkt_len - 1`) is only 1 byte —
+ * a heap out-of-bounds read the next time payload is parsed via
+ * read_str()/read_u32(), since those only check against pkt->len, not
+ * against how much memory was actually allocated.
+ *
+ * Exposed (non-static) so it can be unit tested directly, without
+ * spinning up sockets. Not part of the public API. */
+int khm_ssh_packet_lengths(uint32_t pkt_len, uint8_t pad_len,
+                            uint32_t *out_total, uint32_t *out_payload_len) {
+    if (pkt_len < 2 || pkt_len > SSH_MAX_PACKET) return -1;
+    /* pad_len (padding_length byte itself already counted in pkt_len)
+     * plus at least 1 payload byte (the msg type) must fit inside
+     * pkt_len. Rejects both the underflow case (pad_len >= pkt_len)
+     * and the degenerate zero-payload case (pad_len == pkt_len - 1). */
+    if ((uint32_t)pad_len + 2 > pkt_len) return -1;
+
+    *out_total       = pkt_len - 1;
+    *out_payload_len = pkt_len - 1 - pad_len;
+    return 0;
+}
+
 static int read_packet(int fd, ssh_packet_t *pkt) {
     uint8_t hdr[5];
     if (recv_exact(fd, hdr, 5) < 0) return -1;
@@ -187,10 +217,9 @@ static int read_packet(int fd, ssh_packet_t *pkt) {
                        ((uint32_t)hdr[2] <<  8) |  (uint32_t)hdr[3];
     uint8_t  pad_len = hdr[4];
 
-    if (pkt_len < 2 || pkt_len > SSH_MAX_PACKET) return -1;
-
-    uint32_t payload_len = pkt_len - 1 - pad_len; /* minus padding_length byte, minus padding */
-    uint32_t total       = pkt_len - 1;            /* padding_length already consumed in hdr */
+    uint32_t total, payload_len;
+    if (khm_ssh_packet_lengths(pkt_len, pad_len, &total, &payload_len) < 0)
+        return -1;
 
     uint8_t *buf = malloc(total);
     if (!buf) return -1;

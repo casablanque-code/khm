@@ -43,4 +43,19 @@ void khm_parse_host_port(const char *arg, char *host, size_t hlen, int *port);
  */
 int khm_fingerprint_from_b64(const char *keydata_b64, char *out, size_t out_len);
 
+/*
+ * Internal — exposed only so the SSH binary packet header validation
+ * (RFC 4253 §6) can be unit tested without opening a socket. Not a
+ * stable public API.
+ *
+ * Validates pkt_len/pad_len and derives:
+ *   out_total        bytes left to read off the wire after the header
+ *   out_payload_len  resulting payload length (msg type + body)
+ *
+ * Returns 0 if consistent, -1 if pkt_len/pad_len are malformed or
+ * would underflow (e.g. pad_len >= pkt_len).
+ */
+int khm_ssh_packet_lengths(uint32_t pkt_len, uint8_t pad_len,
+                            uint32_t *out_total, uint32_t *out_payload_len);
+
 #endif /* KHM_HOSTKEY_H */
