@@ -37,6 +37,13 @@ check "ls exits same as list"     bash -c "'$BIN' list --file '$tmp/known_hosts'
 check "ls output == list output"  bash -c "diff <('$BIN' list --file '$tmp/known_hosts') <('$BIN' ls --file '$tmp/known_hosts')"
 check "ls --json works too"       bash -c "'$BIN' ls --file '$tmp/known_hosts' --json | head -c1 | grep -q '\['"
 
+# normalize --write must preserve the original file's permission bits
+# instead of leaving whatever fopen()+umask produced for the temp file.
+chmod 600 "$tmp/known_hosts"
+echo "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl" > "$tmp/known_hosts"
+"$BIN" normalize --file "$tmp/known_hosts" --write >/dev/null
+check "normalize --write preserves 0600 perms" bash -c "[ \"\$(stat -c '%a' '$tmp/known_hosts')\" = '600' ]"
+
 if [ "$fail" -ne 0 ]; then
     echo "some CLI checks failed" >&2
     exit 1

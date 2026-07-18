@@ -3,3 +3,7 @@ khm
 tests/test_parser
 tests/test_json
 tests/test_hostkey_packet
+tests/test_hostkey_b64
+tests/fuzz/fuzz_kex_reply
+tests/fuzz/fuzz_parser
+tests/fuzz/crash-*

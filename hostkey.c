@@ -24,7 +24,13 @@
 static const char B64[] =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
-static void b64_encode(const uint8_t *src, size_t len, char *dst) {
+/* Returns 0 on success, -1 if dst_cap is too small for len bytes of
+ * input (caller must still pre-check with a properly sized buffer —
+ * this is a defensive backstop, not a substitute for that). */
+static int b64_encode(const uint8_t *src, size_t len, char *dst, size_t dst_cap) {
+    size_t needed = ((len + 2) / 3) * 4 + 1;
+    if (needed > dst_cap) return -1;
+
     size_t i = 0, j = 0;
     for (; i + 2 < len; i += 3) {
         dst[j++] = B64[ src[i]          >> 2];
@@ -44,6 +50,7 @@ static void b64_encode(const uint8_t *src, size_t len, char *dst) {
         dst[j++] = '=';
     }
     dst[j] = '\0';
+    return 0;
 }
 
 /* Decode standard base64 (with or without padding) into raw bytes.
@@ -79,8 +86,15 @@ static size_t b64_decode(const char *src, uint8_t *dst, size_t dst_cap) {
 }
 
 /* Base64url (no padding) for SSH fingerprint display */
-static void b64url_encode_nopad(const uint8_t *src, size_t len, char *dst) {
-    b64_encode(src, len, dst);
+static void b64url_encode_nopad(const uint8_t *src, size_t len, char *dst, size_t dst_cap) {
+    if (b64_encode(src, len, dst, dst_cap) != 0) {
+        /* Only reachable if a caller passes a buffer too small for
+         * its own fixed-size input (a programming error, not
+         * attacker-controlled data here) — fail safe rather than
+         * leave dst uninitialized. */
+        if (dst_cap > 0) dst[0] = '\0';
+        return;
+    }
     /* replace + → - and / → _ and strip = */
     for (char *p = dst; *p; p++) {
         if      (*p == '+') *p = '-';
@@ -440,7 +454,8 @@ static int parse_kex_ecdh_reply(const uint8_t *payload, size_t plen,
     out->keydata_len = blob_len;
 
     /* base64 encode */
-    b64_encode(blob, blob_len, out->keydata_b64);
+    if (b64_encode(blob, blob_len, out->keydata_b64, sizeof(out->keydata_b64)) != 0)
+        return -1;
 
     /* parse key type string from blob */
     size_t bpos = 0;
@@ -455,7 +470,7 @@ static int parse_kex_ecdh_reply(const uint8_t *payload, size_t plen,
     khm_sha256(blob, blob_len, digest);
 
     char b64fp[64];
-    b64url_encode_nopad(digest, 32, b64fp);
+    b64url_encode_nopad(digest, 32, b64fp, sizeof(b64fp));
     snprintf(out->fingerprint, sizeof(out->fingerprint), "SHA256:%s", b64fp);
 
     return 0;
@@ -621,6 +636,6 @@ int khm_fingerprint_from_b64(const char *keydata_b64, char *out, size_t out_len)
     khm_sha256(raw, raw_len, digest);
 
     char b64fp[64];
-    b64url_encode_nopad(digest, 32, b64fp);
+    b64url_encode_nopad(digest, 32, b64fp, sizeof(b64fp));
     return snprintf(out, out_len, "SHA256:%s", b64fp) < (int)out_len ? 0 : -1;
 }

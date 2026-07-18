@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <sys/stat.h>
 
 /* ------------------------------------------------------------------ */
 /* Grouping plain (non-hashed) entries by identical key                 */
@@ -175,6 +176,14 @@ int cmd_normalize(const char *path, int write_back, int json_output) {
         }
         khm_json_array_end(stdout);
     } else if (write_back) {
+        /* Preserve the original file's permissions (known_hosts is
+         * often 600) instead of whatever fopen()+umask would give the
+         * temp file — otherwise a rewrite silently loosens perms on a
+         * file that lives in ~/.ssh/. Best-effort: if stat fails (e.g.
+         * file didn't exist yet), fall through to default mode. */
+        struct stat st;
+        int have_mode = (stat(path, &st) == 0);
+
         char tmp_path[600];
         snprintf(tmp_path, sizeof(tmp_path), "%s.khm-tmp", path);
 
@@ -187,6 +196,12 @@ int cmd_normalize(const char *path, int write_back, int json_output) {
         for (size_t i = 0; i < g_count; i++) write_plain_entry(out, &groups[i]);
         for (size_t i = 0; i < h_count; i++) write_hashed_entry(out, &hashed_kept[i]);
         fclose(out);
+
+        if (have_mode && chmod(tmp_path, st.st_mode & 07777) != 0) {
+            fprintf(stderr, "khm normalize: warning: could not preserve permissions on '%s'\n", tmp_path);
+            /* Not fatal — proceed with the rename rather than lose the
+             * normalized content over a chmod failure. */
+        }
 
         if (rename(tmp_path, path) != 0) {
             fprintf(stderr, "khm normalize: failed to replace '%s' (result left at '%s')\n",

@@ -5,12 +5,18 @@
 #include <stdint.h>
 
 #define KHM_KEYDATA_MAX 2048
+/* base64 expands 3 raw bytes -> 4 chars; round up, +1 for NUL.
+ * keydata_b64 must be sized off THIS, not KHM_KEYDATA_MAX directly —
+ * a buffer sized as KHM_KEYDATA_MAX would overflow by ~700 bytes for
+ * a maximal-size key blob (a real, remotely-triggerable overflow that
+ * existed here before this fix). */
+#define KHM_KEYDATA_B64_MAX (((KHM_KEYDATA_MAX + 2) / 3) * 4 + 1)
 
 typedef struct {
     char     keytype_str[64];
     uint8_t  keydata[KHM_KEYDATA_MAX];  /* raw DER/wire-format public key */
     size_t   keydata_len;
-    char     keydata_b64[KHM_KEYDATA_MAX]; /* base64 of keydata (for comparison) */
+    char     keydata_b64[KHM_KEYDATA_B64_MAX]; /* base64 of keydata (for comparison) */
     char     fingerprint[128];          /* SHA256:base64url */
 } khm_hostkey_t;
 
